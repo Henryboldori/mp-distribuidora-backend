@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 
 // POST /clientes - cria novo cliente
 router.post('/', async (req, res) => {
-  const { nome, endereco, telefone } = req.body;
+  const { nome, endereco, telefone, categoria, observacoes } = req.body;
 
   if (!nome || !endereco) {
     return res.status(400).json({ erro: 'Nome e endereco sao obrigatorios.' });
@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
 
   try {
     const cliente = await prisma.cliente.create({
-      data: { nome, endereco, telefone, vendedorId: req.usuario.id }
+      data: { nome, endereco, telefone, categoria, observacoes, vendedorId: req.usuario.id }
     });
     res.status(201).json(cliente);
   } catch (err) {
@@ -36,12 +36,12 @@ router.post('/', async (req, res) => {
 // PUT /clientes/:id - edita cliente
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { nome, endereco, telefone } = req.body;
+  const { nome, endereco, telefone, categoria, observacoes } = req.body;
 
   try {
     const cliente = await prisma.cliente.update({
       where: { id: Number(id) },
-      data: { nome, endereco, telefone }
+      data: { nome, endereco, telefone, categoria, observacoes }
     });
     res.json(cliente);
   } catch (err) {

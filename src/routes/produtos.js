@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 
 // POST /produtos - somente ADMIN cria produto
 router.post('/', somenteAdmin, async (req, res) => {
-  const { nome, descricao, preco, desconto, estoque, estoqueMin } = req.body;
+  const { nome, descricao, categoria, unidade, preco, desconto, estoque, estoqueMin } = req.body;
 
   if (!nome || preco === undefined) {
     return res.status(400).json({ erro: 'Nome e preco sao obrigatorios.' });
@@ -28,6 +28,8 @@ router.post('/', somenteAdmin, async (req, res) => {
       data: {
         nome,
         descricao,
+        categoria: categoria || 'Geral',
+        unidade: unidade || 'Unidade',
         preco: Number(preco),
         desconto: Number(desconto) || 0,
         estoque: Number(estoque) || 0,
@@ -43,7 +45,7 @@ router.post('/', somenteAdmin, async (req, res) => {
 // PUT /produtos/:id - somente ADMIN edita (preco, desconto, estoque, etc)
 router.put('/:id', somenteAdmin, async (req, res) => {
   const { id } = req.params;
-  const { nome, descricao, preco, desconto, estoque, estoqueMin } = req.body;
+  const { nome, descricao, categoria, unidade, preco, desconto, estoque, estoqueMin } = req.body;
 
   try {
     const produto = await prisma.produto.update({
@@ -51,6 +53,8 @@ router.put('/:id', somenteAdmin, async (req, res) => {
       data: {
         nome,
         descricao,
+        categoria,
+        unidade,
         preco: preco !== undefined ? Number(preco) : undefined,
         desconto: desconto !== undefined ? Number(desconto) : undefined,
         estoque: estoque !== undefined ? Number(estoque) : undefined,

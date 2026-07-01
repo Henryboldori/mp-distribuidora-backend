@@ -20,6 +20,18 @@ enum StatusPedido {
   CANCELADO
 }
 
+enum FormaPagamento {
+  DINHEIRO
+  PIX
+  CARTAO
+  FIADO
+}
+
+enum StatusPagamento {
+  PAGO
+  PENDENTE
+}
+
 model Usuario {
   id        Int      @id @default(autoincrement())
   nome      String
@@ -33,11 +45,13 @@ model Usuario {
 }
 
 model Cliente {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  endereco  String
-  telefone  String?
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  nome       String
+  endereco   String
+  telefone   String?
+  categoria  String?  // Ex: Bar, Mercado, Restaurante, Residencial
+  observacoes String?
+  createdAt  DateTime @default(now())
 
   vendedorId Int?
   vendedor   Usuario? @relation(fields: [vendedorId], references: [id])
@@ -49,6 +63,8 @@ model Produto {
   id          Int      @id @default(autoincrement())
   nome        String
   descricao   String?
+  categoria   String?  @default("Geral") // Ex: Cerveja, Refrigerante, Destilado, Água
+  unidade     String   @default("Unidade") // Ex: Caixa, Fardo, Garrafa, Unidade
   preco       Float
   desconto    Float    @default(0) // percentual, ex: 10 = 10%
   estoque     Int      @default(0)
@@ -59,10 +75,13 @@ model Produto {
 }
 
 model Pedido {
-  id         Int           @id @default(autoincrement())
-  valorTotal Float
-  status     StatusPedido  @default(PENDENTE)
-  createdAt  DateTime      @default(now())
+  id              Int             @id @default(autoincrement())
+  valorTotal      Float
+  status          StatusPedido    @default(PENDENTE)
+  formaPagamento  FormaPagamento  @default(DINHEIRO)
+  statusPagamento StatusPagamento @default(PENDENTE)
+  observacoes     String?
+  createdAt       DateTime        @default(now())
 
   clienteId  Int
   cliente    Cliente       @relation(fields: [clienteId], references: [id])

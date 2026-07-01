@@ -26,9 +26,9 @@ router.get('/', async (req, res) => {
 });
 
 // POST /pedidos - cria pedido, calcula total com desconto e abate do estoque
-// Body esperado: { clienteId: number, itens: [{ produtoId, quantidade }] }
+// Body esperado: { clienteId, itens: [{ produtoId, quantidade }], formaPagamento, observacoes }
 router.post('/', async (req, res) => {
-  const { clienteId, itens } = req.body;
+  const { clienteId, itens, formaPagamento, observacoes } = req.body;
 
   if (!clienteId || !Array.isArray(itens) || itens.length === 0) {
     return res.status(400).json({ erro: 'Selecione um cliente e ao menos um produto.' });
@@ -72,9 +72,12 @@ router.post('/', async (req, res) => {
           vendedorId: req.usuario.id,
           valorTotal,
           status: 'PENDENTE',
+          formaPagamento: formaPagamento || 'DINHEIRO',
+          statusPagamento: formaPagamento === 'FIADO' ? 'PENDENTE' : 'PAGO',
+          observacoes,
           itens: { create: itensParaCriar }
         },
-        include: { itens: true, cliente: true }
+        include: { itens: { include: { produto: true } }, cliente: true }
       });
 
       return pedido;
@@ -105,6 +108,54 @@ router.put('/:id/status', async (req, res) => {
     res.json(pedido);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao atualizar status do pedido.' });
+  }
+});
+
+// PUT /pedidos/:id/pagamento - marca como pago/pendente (util pra pedidos FIADO)
+router.put('/:id/pagamento', async (req, res) => {
+  const { id } = req.params;
+  const { statusPagamento } = req.body;
+
+  if (!['PAGO', 'PENDENTE'].includes(statusPagamento)) {
+    return res.status(400).json({ erro: 'Status de pagamento invalido.' });
+  }
+
+  try {
+    const pedido = await prisma.pedido.update({
+      where: { id: Number(id) },
+      data: { statusPagamento }
+    });
+    res.json(pedido);
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao atualizar pagamento.' });
+  }
+});
+
+// DELETE /pedidos/:id - somente ADMIN pode excluir (ex: pedido duplicado por engano)
+// Devolve os itens pro estoque antes de excluir
+router.delete('/:id', somenteAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.$transaction(async (tx) => {
+      const pedido = await tx.pedido.findUnique({
+        where: { id: Number(id) },
+        include: { itens: true }
+      });
+      if (!pedido) throw new Error('Pedido nao encontrado.');
+
+      // Devolve as quantidades pro estoque
+      for (const item of pedido.itens) {
+        await tx.produto.update({
+          where: { id: item.produtoId },
+          data: { estoque: { increment: item.quantidade } }
+        });
+      }
+
+      await tx.pedido.delete({ where: { id: Number(id) } });
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ erro: err.message || 'Erro ao excluir pedido.' });
   }
 });
 
