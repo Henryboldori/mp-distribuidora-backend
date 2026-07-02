@@ -8,27 +8,30 @@ const produtosRoutes = require('./routes/produtos');
 const pedidosRoutes = require('./routes/pedidos');
 const usuariosRoutes = require('./routes/usuarios');
 const dashboardRoutes = require('./routes/dashboard');
+const romaneioRoutes = require('./routes/romaneio');
+const buscaRoutes = require('./routes/busca');
+const fornecedoresRoutes = require('./routes/fornecedores');
+const relatoriosRoutes = require('./routes/relatorios');
 
 const app = express();
 
-// Libera o frontend para acessar a API (CORS)
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*'
-}));
-
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json());
 
-// Rota de teste, util pra ver se a API esta no ar
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', mensagem: 'API M&P Distribuidora rodando.' });
+  res.json({ status: 'ok', mensagem: 'API Bebidas Pelicano rodando.' });
 });
 
-app.use('/login', authRoutes); // mantem /login direto, igual o frontend ja espera
+app.use('/login', authRoutes);
 app.use('/clientes', clientesRoutes);
 app.use('/produtos', produtosRoutes);
 app.use('/pedidos', pedidosRoutes);
 app.use('/usuarios', usuariosRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use('/romaneio', romaneioRoutes);
+app.use('/busca', buscaRoutes);
+app.use('/fornecedores', fornecedoresRoutes);
+app.use('/relatorios', relatoriosRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

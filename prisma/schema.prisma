@@ -1,4 +1,4 @@
-// Schema do banco de dados - Distribuidora M&P
+// Schema do banco de dados - Bebidas Pelicano
 generator client {
   provider = "prisma-client-js"
 }
@@ -47,9 +47,9 @@ model Usuario {
 model Cliente {
   id         Int      @id @default(autoincrement())
   nome       String
-  endereco   String
+  endereco   String?
   telefone   String?
-  categoria  String?  // Ex: Bar, Mercado, Restaurante, Residencial
+  categoria  String?
   observacoes String?
   createdAt  DateTime @default(now())
 
@@ -63,15 +63,38 @@ model Produto {
   id          Int      @id @default(autoincrement())
   nome        String
   descricao   String?
-  categoria   String?  @default("Geral") // Ex: Cerveja, Refrigerante, Destilado, Água
-  unidade     String   @default("Unidade") // Ex: Caixa, Fardo, Garrafa, Unidade
+  categoria   String?  @default("Geral")
+  unidade     String   @default("Unidade")
   preco       Float
-  desconto    Float    @default(0) // percentual, ex: 10 = 10%
+  desconto    Float    @default(0)
   estoque     Int      @default(0)
-  estoqueMin  Int      @default(5) // alerta de estoque baixo
+  estoqueMin  Int      @default(5)
   createdAt   DateTime @default(now())
 
   itensPedido ItemPedido[]
+  entradas    EntradaEstoque[]
+}
+
+model Fornecedor {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  telefone  String?
+  createdAt DateTime @default(now())
+
+  entradas  EntradaEstoque[]
+}
+
+model EntradaEstoque {
+  id             Int      @id @default(autoincrement())
+  quantidade     Int
+  custoUnitario  Float?
+  createdAt      DateTime @default(now())
+
+  produtoId      Int
+  produto        Produto     @relation(fields: [produtoId], references: [id])
+
+  fornecedorId   Int?
+  fornecedor     Fornecedor? @relation(fields: [fornecedorId], references: [id])
 }
 
 model Pedido {
@@ -95,11 +118,13 @@ model Pedido {
 model ItemPedido {
   id         Int     @id @default(autoincrement())
   quantidade Int
-  precoUnit  Float   // preco já com desconto aplicado, no momento da venda
+  precoUnit  Float
+  nomeAvulso String?
+  unidadeAvulso String?
 
   pedidoId   Int
   pedido     Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
 
-  produtoId  Int
-  produto    Produto @relation(fields: [produtoId], references: [id])
+  produtoId  Int?
+  produto    Produto? @relation(fields: [produtoId], references: [id])
 }
