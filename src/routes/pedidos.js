@@ -65,10 +65,6 @@ async function processarItens(tx, itens) {
       const produto = await tx.produto.findUnique({ where: { id: produtoIdNum } });
       if (!produto) throw new Error(`Produto ${produtoIdNum} nao encontrado.`);
 
-      if (produto.estoque < quantidade) {
-        throw new Error(`Estoque insuficiente para "${produto.nome}". Disponivel: ${produto.estoque}.`);
-      }
-
       const precoUnit = item.precoUnit !== undefined ? Number(item.precoUnit) : produto.preco * (1 - (produto.desconto || 0) / 100);
       valorTotal += precoUnit * quantidade;
       itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
