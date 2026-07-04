@@ -1,5 +1,10 @@
 FROM node:20-alpine
+
 WORKDIR /app
+
+# OpenSSL e libs necessarias pro motor do Prisma funcionar no Alpine
+RUN apk add --no-cache openssl libc6-compat
+
 COPY package*.json ./
 RUN npm install
 COPY . .
