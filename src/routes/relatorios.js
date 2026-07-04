@@ -1,7 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { autenticar } = require('../middleware/auth');
-const { limitesDoDia } = require('../lib/datas');
+const { limitesDoDia, hojeBrasilia } = require('../lib/datas');
 
 const router = express.Router();
 router.use(autenticar);
@@ -10,7 +10,7 @@ router.use(autenticar);
 router.get('/', async (req, res) => {
   try {
     const ehAdmin = req.usuario.role === 'ADMIN';
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = hojeBrasilia();
     const inicioStr = req.query.inicio || hoje;
     const fimStr = req.query.fim || hoje;
 
