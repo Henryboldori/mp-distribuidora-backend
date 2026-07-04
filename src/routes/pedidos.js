@@ -5,7 +5,6 @@ const { autenticar, somenteAdmin } = require('../middleware/auth');
 const router = express.Router();
 router.use(autenticar);
 
-// GET /pedidos - admin ve todos, vendedor ve so os dele. Aceita filtros ?clienteId= e ?data=YYYY-MM-DD
 router.get('/', async (req, res) => {
   try {
     const where = req.usuario.role === 'ADMIN' ? {} : { vendedorId: req.usuario.id };
@@ -19,11 +18,7 @@ router.get('/', async (req, res) => {
     const pedidos = await prisma.pedido.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: {
-        cliente: true,
-        vendedor: { select: { nome: true } },
-        itens: { include: { produto: true } }
-      }
+      include: { cliente: true, vendedor: { select: { nome: true } }, itens: { include: { produto: true } } }
     });
     res.json(pedidos);
   } catch (err) {
@@ -31,7 +26,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /pedidos/:id - detalhe de um pedido (usado na tela de edicao)
 router.get('/:id', async (req, res) => {
   try {
     const pedido = await prisma.pedido.findUnique({
@@ -45,7 +39,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /pedidos - cria pedido. Cada item pode vir com produtoId (do catalogo) OU nomeAvulso (fora do catalogo).
+// POST /pedidos - cada item pode vir com produtoId (catalogo) OU nomeAvulso (fora do catalogo)
 router.post('/', async (req, res) => {
   const { clienteId, itens, formaPagamento, observacoes } = req.body;
 
@@ -61,8 +55,8 @@ router.post('/', async (req, res) => {
       for (const item of itens) {
         const quantidade = Number(item.quantidade) || 0;
 
+        // CRUCIAL: so busca no catalogo se realmente veio um produtoId. Item avulso NUNCA passa por aqui.
         if (item.produtoId) {
-          // Item do catalogo
           const produto = await tx.produto.findUnique({ where: { id: Number(item.produtoId) } });
           if (!produto) throw new Error(`Produto ${item.produtoId} nao encontrado.`);
 
@@ -70,10 +64,8 @@ router.post('/', async (req, res) => {
           valorTotal += precoUnit * quantidade;
           itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
 
-          // Abate do estoque (nao bloqueia mesmo se ficar negativo - so um aviso visual no frontend)
           await tx.produto.update({ where: { id: produto.id }, data: { estoque: { decrement: quantidade } } });
         } else {
-          // Item avulso (fora do catalogo)
           const precoUnit = Number(item.precoUnit) || 0;
           valorTotal += precoUnit * quantidade;
           itensParaCriar.push({
@@ -109,7 +101,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /pedidos/:id - edita um pedido inteiro (troca itens, cliente, forma de pagamento)
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { clienteId, itens, formaPagamento, observacoes } = req.body;
@@ -123,7 +114,6 @@ router.put('/:id', async (req, res) => {
       const pedidoAtual = await tx.pedido.findUnique({ where: { id: Number(id) }, include: { itens: true } });
       if (!pedidoAtual) throw new Error('Pedido nao encontrado.');
 
-      // Devolve ao estoque os itens antigos que eram do catalogo
       for (const item of pedidoAtual.itens) {
         if (item.produtoId) {
           await tx.produto.update({ where: { id: item.produtoId }, data: { estoque: { increment: item.quantidade } } });
@@ -180,7 +170,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PUT /pedidos/:id/status
 router.put('/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -195,7 +184,6 @@ router.put('/:id/status', async (req, res) => {
   }
 });
 
-// PUT /pedidos/:id/pagamento
 router.put('/:id/pagamento', async (req, res) => {
   const { id } = req.params;
   const { statusPagamento } = req.body;
@@ -209,7 +197,6 @@ router.put('/:id/pagamento', async (req, res) => {
   }
 });
 
-// DELETE /pedidos/:id - somente ADMIN, devolve estoque
 router.delete('/:id', somenteAdmin, async (req, res) => {
   const { id } = req.params;
   try {
