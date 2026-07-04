@@ -40,6 +40,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Decide se o item e do catalogo ou avulso, de forma segura.
+// Nunca deixa um produtoId invalido (vazio, "0", null, NaN) chegar no Prisma.
 function normalizarItem(item) {
   const quantidade = Number(item.quantidade) || 0;
   if (quantidade <= 0) {
@@ -65,6 +67,7 @@ async function processarItens(tx, itens) {
       const produto = await tx.produto.findUnique({ where: { id: produtoIdNum } });
       if (!produto) throw new Error(`Produto ${produtoIdNum} nao encontrado.`);
 
+      // Venda liberada mesmo sem estoque suficiente (pode ficar negativo).
       const precoUnit = item.precoUnit !== undefined ? Number(item.precoUnit) : produto.preco * (1 - (produto.desconto || 0) / 100);
       valorTotal += precoUnit * quantidade;
       itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
