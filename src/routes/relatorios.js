@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { autenticar } = require('../middleware/auth');
+const { limitesDoDia } = require('../lib/datas');
 
 const router = express.Router();
 router.use(autenticar);
@@ -13,8 +14,8 @@ router.get('/', async (req, res) => {
     const inicioStr = req.query.inicio || hoje;
     const fimStr = req.query.fim || hoje;
 
-    const inicio = new Date(inicioStr + 'T00:00:00');
-    const fim = new Date(fimStr + 'T23:59:59');
+    const { inicio } = limitesDoDia(inicioStr);
+    const { fim } = limitesDoDia(fimStr);
 
     const where = {
       createdAt: { gte: inicio, lte: fim },

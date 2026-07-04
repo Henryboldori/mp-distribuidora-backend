@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { autenticar, somenteAdmin } = require('../middleware/auth');
+const { limitesDoDia } = require('../lib/datas');
 
 const router = express.Router();
 router.use(autenticar);
@@ -10,8 +11,7 @@ router.get('/', async (req, res) => {
     const where = req.usuario.role === 'ADMIN' ? {} : { vendedorId: req.usuario.id };
     if (req.query.clienteId) where.clienteId = Number(req.query.clienteId);
     if (req.query.data) {
-      const inicio = new Date(req.query.data + 'T00:00:00');
-      const fim = new Date(req.query.data + 'T23:59:59');
+      const { inicio, fim } = limitesDoDia(req.query.data);
       where.createdAt = { gte: inicio, lte: fim };
     }
 
@@ -22,6 +22,7 @@ router.get('/', async (req, res) => {
     });
     res.json(pedidos);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ erro: 'Erro ao buscar pedidos.' });
   }
 });
@@ -39,7 +40,55 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /pedidos - cada item pode vir com produtoId (catalogo) OU nomeAvulso (fora do catalogo)
+function normalizarItem(item) {
+  const quantidade = Number(item.quantidade) || 0;
+  if (quantidade <= 0) {
+    throw new Error('Quantidade invalida em um dos itens.');
+  }
+
+  const idBruto = item.produtoId;
+  const temProdutoId = idBruto !== undefined && idBruto !== null && idBruto !== '' && idBruto !== 0;
+  const produtoIdNum = temProdutoId ? Number(idBruto) : null;
+  const produtoIdValido = produtoIdNum !== null && Number.isInteger(produtoIdNum) && produtoIdNum > 0;
+
+  return { quantidade, produtoIdValido, produtoIdNum };
+}
+
+async function processarItens(tx, itens) {
+  let valorTotal = 0;
+  const itensParaCriar = [];
+
+  for (const item of itens) {
+    const { quantidade, produtoIdValido, produtoIdNum } = normalizarItem(item);
+
+    if (produtoIdValido) {
+      const produto = await tx.produto.findUnique({ where: { id: produtoIdNum } });
+      if (!produto) throw new Error(`Produto ${produtoIdNum} nao encontrado.`);
+
+      if (produto.estoque < quantidade) {
+        throw new Error(`Estoque insuficiente para "${produto.nome}". Disponivel: ${produto.estoque}.`);
+      }
+
+      const precoUnit = item.precoUnit !== undefined ? Number(item.precoUnit) : produto.preco * (1 - (produto.desconto || 0) / 100);
+      valorTotal += precoUnit * quantidade;
+      itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
+
+      await tx.produto.update({ where: { id: produto.id }, data: { estoque: { decrement: quantidade } } });
+    } else {
+      const precoUnit = Number(item.precoUnit) || 0;
+      valorTotal += precoUnit * quantidade;
+      itensParaCriar.push({
+        nomeAvulso: item.nomeAvulso || 'Item avulso',
+        unidadeAvulso: item.unidadeAvulso || 'Unidade',
+        quantidade,
+        precoUnit
+      });
+    }
+  }
+
+  return { valorTotal, itensParaCriar };
+}
+
 router.post('/', async (req, res) => {
   const { clienteId, itens, formaPagamento, observacoes } = req.body;
 
@@ -49,35 +98,9 @@ router.post('/', async (req, res) => {
 
   try {
     const resultado = await prisma.$transaction(async (tx) => {
-      let valorTotal = 0;
-      const itensParaCriar = [];
+      const { valorTotal, itensParaCriar } = await processarItens(tx, itens);
 
-      for (const item of itens) {
-        const quantidade = Number(item.quantidade) || 0;
-
-        // CRUCIAL: so busca no catalogo se realmente veio um produtoId. Item avulso NUNCA passa por aqui.
-        if (item.produtoId) {
-          const produto = await tx.produto.findUnique({ where: { id: Number(item.produtoId) } });
-          if (!produto) throw new Error(`Produto ${item.produtoId} nao encontrado.`);
-
-          const precoUnit = item.precoUnit !== undefined ? Number(item.precoUnit) : produto.preco * (1 - (produto.desconto || 0) / 100);
-          valorTotal += precoUnit * quantidade;
-          itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
-
-          await tx.produto.update({ where: { id: produto.id }, data: { estoque: { decrement: quantidade } } });
-        } else {
-          const precoUnit = Number(item.precoUnit) || 0;
-          valorTotal += precoUnit * quantidade;
-          itensParaCriar.push({
-            nomeAvulso: item.nomeAvulso || 'Item avulso',
-            unidadeAvulso: item.unidadeAvulso || 'Unidade',
-            quantidade,
-            precoUnit
-          });
-        }
-      }
-
-      const pedido = await tx.pedido.create({
+      return tx.pedido.create({
         data: {
           clienteId: Number(clienteId),
           vendedorId: req.usuario.id,
@@ -90,8 +113,6 @@ router.post('/', async (req, res) => {
         },
         include: { itens: { include: { produto: true } }, cliente: true }
       });
-
-      return pedido;
     });
 
     res.status(201).json(resultado);
@@ -121,34 +142,9 @@ router.put('/:id', async (req, res) => {
       }
       await tx.itemPedido.deleteMany({ where: { pedidoId: Number(id) } });
 
-      let valorTotal = 0;
-      const itensParaCriar = [];
+      const { valorTotal, itensParaCriar } = await processarItens(tx, itens);
 
-      for (const item of itens) {
-        const quantidade = Number(item.quantidade) || 0;
-
-        if (item.produtoId) {
-          const produto = await tx.produto.findUnique({ where: { id: Number(item.produtoId) } });
-          if (!produto) throw new Error(`Produto ${item.produtoId} nao encontrado.`);
-
-          const precoUnit = item.precoUnit !== undefined ? Number(item.precoUnit) : produto.preco * (1 - (produto.desconto || 0) / 100);
-          valorTotal += precoUnit * quantidade;
-          itensParaCriar.push({ produtoId: produto.id, quantidade, precoUnit });
-
-          await tx.produto.update({ where: { id: produto.id }, data: { estoque: { decrement: quantidade } } });
-        } else {
-          const precoUnit = Number(item.precoUnit) || 0;
-          valorTotal += precoUnit * quantidade;
-          itensParaCriar.push({
-            nomeAvulso: item.nomeAvulso || 'Item avulso',
-            unidadeAvulso: item.unidadeAvulso || 'Unidade',
-            quantidade,
-            precoUnit
-          });
-        }
-      }
-
-      const pedido = await tx.pedido.update({
+      return tx.pedido.update({
         where: { id: Number(id) },
         data: {
           clienteId: clienteId ? Number(clienteId) : pedidoAtual.clienteId,
@@ -159,8 +155,6 @@ router.put('/:id', async (req, res) => {
         },
         include: { itens: { include: { produto: true } }, cliente: true }
       });
-
-      return pedido;
     });
 
     res.json(resultado);

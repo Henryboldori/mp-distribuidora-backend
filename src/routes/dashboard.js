@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { autenticar } = require('../middleware/auth');
+const { inicioDoDiaBrasilia } = require('../lib/datas');
 
 const router = express.Router();
 router.use(autenticar);
@@ -26,8 +27,7 @@ router.get('/', async (req, res) => {
       .filter(p => p.statusPagamento === 'PENDENTE')
       .reduce((acc, p) => acc + p.valorTotal, 0);
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const { inicio: hoje } = inicioDoDiaBrasilia();
     const pedidosHoje = pedidos.filter(p => new Date(p.createdAt) >= hoje);
     const valorVendidoHoje = pedidosHoje.reduce((acc, p) => acc + p.valorTotal, 0);
 
@@ -41,7 +41,6 @@ router.get('/', async (req, res) => {
       valorPendenteRecebimento
     };
 
-    // Somente admin ve dados de estoque geral e ranking de vendedores
     if (ehAdmin) {
       resposta.valorEmEstoque = produtos.reduce((acc, p) => acc + p.preco * p.estoque, 0);
       resposta.produtosEstoqueBaixo = produtos.filter(p => p.estoque <= p.estoqueMin);

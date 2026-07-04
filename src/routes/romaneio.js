@@ -1,17 +1,16 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { autenticar } = require('../middleware/auth');
+const { limitesDoDia } = require('../lib/datas');
 
 const router = express.Router();
 router.use(autenticar);
 
 // GET /romaneio?data=YYYY-MM-DD
-// Soma as quantidades de cada produto entre TODOS os pedidos do dia (nao cancelados)
 router.get('/', async (req, res) => {
   try {
     const dataStr = req.query.data || new Date().toISOString().slice(0, 10);
-    const inicio = new Date(dataStr + 'T00:00:00');
-    const fim = new Date(dataStr + 'T23:59:59');
+    const { inicio, fim } = limitesDoDia(dataStr);
 
     const where = {
       createdAt: { gte: inicio, lte: fim },
