@@ -78,4 +78,104 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /relatorios/inadimplentes - clientes com pedidos fiado/pendentes de pagamento
+router.get('/inadimplentes', async (req, res) => {
+  try {
+    const ehAdmin = req.usuario.role === 'ADMIN';
+    const where = {
+      statusPagamento: 'PENDENTE',
+      status: { not: 'CANCELADO' }
+    };
+    if (!ehAdmin) where.vendedorId = req.usuario.id;
+
+    const pedidos = await prisma.pedido.findMany({
+      where,
+      include: { cliente: true },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const porCliente = {};
+    const hoje = new Date();
+
+    pedidos.forEach(p => {
+      const clienteId = p.clienteId;
+      if (!porCliente[clienteId]) {
+        porCliente[clienteId] = {
+          clienteId,
+          nome: p.cliente?.nome || 'Desconhecido',
+          telefone: p.cliente?.telefone || null,
+          totalPendente: 0,
+          qtdPedidos: 0,
+          pedidoMaisAntigo: p.createdAt
+        };
+      }
+      porCliente[clienteId].totalPendente += p.valorTotal;
+      porCliente[clienteId].qtdPedidos += 1;
+      if (new Date(p.createdAt) < new Date(porCliente[clienteId].pedidoMaisAntigo)) {
+        porCliente[clienteId].pedidoMaisAntigo = p.createdAt;
+      }
+    });
+
+    const lista = Object.values(porCliente).map((c) => {
+      const diasEmAberto = Math.floor((hoje - new Date(c.pedidoMaisAntigo)) / (1000 * 60 * 60 * 24));
+      return { ...c, diasEmAberto };
+    }).sort((a, b) => b.diasEmAberto - a.diasEmAberto);
+
+    res.json({
+      totalGeralPendente: lista.reduce((acc, c) => acc + c.totalPendente, 0),
+      clientes: lista
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: 'Erro ao buscar inadimplentes.' });
+  }
+});
+
+// GET /relatorios/clientes-inativos?dias=20 - clientes sem pedido ha X dias (ou nunca compraram)
+router.get('/clientes-inativos', async (req, res) => {
+  try {
+    const ehAdmin = req.usuario.role === 'ADMIN';
+    const diasLimite = Number(req.query.dias) || 20;
+
+    const whereClientes = ehAdmin ? {} : { vendedorId: req.usuario.id };
+
+    const clientes = await prisma.cliente.findMany({
+      where: whereClientes,
+      include: {
+        pedidos: {
+          where: { status: { not: 'CANCELADO' } },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    const hoje = new Date();
+    const limiteMs = diasLimite * 24 * 60 * 60 * 1000;
+
+    const inativos = clientes
+      .map(c => {
+        const ultimoPedido = c.pedidos[0];
+        const diasSemComprar = ultimoPedido
+          ? Math.floor((hoje - new Date(ultimoPedido.createdAt)) / (1000 * 60 * 60 * 24))
+          : null; // null = nunca comprou
+
+        return {
+          id: c.id,
+          nome: c.nome,
+          telefone: c.telefone,
+          ultimaCompra: ultimoPedido ? ultimoPedido.createdAt : null,
+          diasSemComprar
+        };
+      })
+      .filter(c => c.diasSemComprar === null || (hoje - new Date(c.ultimaCompra)) > limiteMs)
+      .sort((a, b) => (b.diasSemComprar ?? 999999) - (a.diasSemComprar ?? 999999));
+
+    res.json({ diasLimite, totalInativos: inativos.length, clientes: inativos });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: 'Erro ao buscar clientes inativos.' });
+  }
+});
+
 module.exports = router;
