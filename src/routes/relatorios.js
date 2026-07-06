@@ -131,7 +131,8 @@ router.get('/inadimplentes', async (req, res) => {
   }
 });
 
-// GET /relatorios/clientes-inativos?dias=20 - clientes sem pedido ha X dias (ou nunca compraram)
+// GET /relatorios/clientes-inativos?dias=20 - clientes que compraram antes mas pararam ha X dias
+// (separa de quem NUNCA comprou, que e uma categoria diferente e nao deve contar como "inativo")
 router.get('/clientes-inativos', async (req, res) => {
   try {
     const ehAdmin = req.usuario.role === 'ADMIN';
@@ -151,27 +152,39 @@ router.get('/clientes-inativos', async (req, res) => {
     });
 
     const hoje = new Date();
-    const limiteMs = diasLimite * 24 * 60 * 60 * 1000;
 
-    const inativos = clientes
-      .map(c => {
-        const ultimoPedido = c.pedidos[0];
-        const diasSemComprar = ultimoPedido
-          ? Math.floor((hoje - new Date(ultimoPedido.createdAt)) / (1000 * 60 * 60 * 24))
-          : null; // null = nunca comprou
+    const nuncaCompraram = [];
+    const inativos = [];
 
-        return {
+    clientes.forEach(c => {
+      const ultimoPedido = c.pedidos[0];
+
+      if (!ultimoPedido) {
+        nuncaCompraram.push({ id: c.id, nome: c.nome, telefone: c.telefone });
+        return;
+      }
+
+      const diasSemComprar = Math.floor((hoje - new Date(ultimoPedido.createdAt)) / (1000 * 60 * 60 * 24));
+      if (diasSemComprar > diasLimite) {
+        inativos.push({
           id: c.id,
           nome: c.nome,
           telefone: c.telefone,
-          ultimaCompra: ultimoPedido ? ultimoPedido.createdAt : null,
+          ultimaCompra: ultimoPedido.createdAt,
           diasSemComprar
-        };
-      })
-      .filter(c => c.diasSemComprar === null || (hoje - new Date(c.ultimaCompra)) > limiteMs)
-      .sort((a, b) => (b.diasSemComprar ?? 999999) - (a.diasSemComprar ?? 999999));
+        });
+      }
+    });
 
-    res.json({ diasLimite, totalInativos: inativos.length, clientes: inativos });
+    inativos.sort((a, b) => b.diasSemComprar - a.diasSemComprar);
+
+    res.json({
+      diasLimite,
+      totalInativos: inativos.length,
+      totalNuncaCompraram: nuncaCompraram.length,
+      inativos,
+      nuncaCompraram
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ erro: 'Erro ao buscar clientes inativos.' });
